@@ -1,0 +1,15 @@
+**/*.o
+**/*.a
+**/*.so
+**/*.so.[0-9]
+**/*.so.[0-9].[0-9].[0-9]
+**/*.so.[0-9].[0-9].[0-9][0-9].[0-9]
+**/*~
+**/*.bak
+*/config.log
+*/config.status
+*/depend.status
+*/configure
+*/Makefile
+*/autom4te.cache
+nxproxy/nxproxy
