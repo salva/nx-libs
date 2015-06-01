@@ -438,6 +438,7 @@ static int SetupDisplaySocket(int &xServerAddrFamily, sockaddr *&xServerAddr,
 //
 
 static int ListenConnectionTCP(const char *hostname, int port, const char *label);
+static int ListenConnectionUnix(const char *path, const char *label);
 static int ListenConnection(sockaddr *addr, socklen_t addrlen, const char *label);
 static int AcceptConnection(int fd, int domain, const char *label);
 
@@ -4574,6 +4575,33 @@ int ListenConnectionTCP(const char *host, int port, const char *label)
     }
   }
   return ListenConnection((sockaddr *)&tcpAddr, sizeof(tcpAddr), label);
+}
+
+int ListenConnectionUnix(const char *path, const char *label)
+{
+  sockaddr_un unixAddr;
+  unixAddr.sun_family = AF_UNIX;
+
+  #ifdef UNIX_PATH_MAX
+  if (strlen(path) >= UNIX_PATH_MAX)
+  #else
+  if (strlen(path) >= sizeof(unixAddr.sun_path))
+  #endif
+  {
+    #ifdef PANIC
+    *logofs << "Loop: PANIC! Socket path \"" << path << "\" for "
+            << label << " is too long.\n" << logofs_flush;
+    #endif
+
+    cerr << "Error" << ": Socket path \"" << path << "\" for "
+         << label << " is too long.\n";
+
+    HandleCleanup();
+    return -1;
+  }
+
+  strcpy(unixAddr.sun_path, path);
+  return ListenConnection((sockaddr *)&unixAddr, sizeof(unixAddr), label);
 }
 
 static int AcceptConnection(int fd, int domain, const char *label)
