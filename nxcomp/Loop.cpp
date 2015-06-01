@@ -437,7 +437,8 @@ static int SetupDisplaySocket(int &xServerAddrFamily, sockaddr *&xServerAddr,
 // a new connection.
 //
 
-static int ListenConnection(int port, const char *label);
+static int ListenConnectionTCP(const char *hostname, int port, const char *label);
+static int ListenConnection(sockaddr *addr, socklen_t addrlen, const char *label);
 static int AcceptConnection(int fd, int domain, const char *label);
 
 //
@@ -4423,7 +4424,7 @@ int SetupServiceSockets()
   {
     if (useCupsSocket)
     {
-      if ((cupsFD = ListenConnection(cupsPort, "CUPS")) < 0)
+      if ((cupsFD = ListenConnectionTCP("localhost", cupsPort, "CUPS")) < 0)
       {
         useCupsSocket = 0;
       }
@@ -4431,7 +4432,7 @@ int SetupServiceSockets()
 
     if (useAuxSocket)
     {
-      if ((auxFD = ListenConnection(auxPort, "auxiliary X11")) < 0)
+      if ((auxFD = ListenConnectionTCP("localhost", auxPort, "auxiliary X11")) < 0)
       {
         useAuxSocket = 0;
       }
@@ -4439,7 +4440,7 @@ int SetupServiceSockets()
 
     if (useSmbSocket)
     {
-      if ((smbFD = ListenConnection(smbPort, "SMB")) < 0)
+      if ((smbFD = ListenConnectionTCP("localhost", smbPort, "SMB")) < 0)
       {
         useSmbSocket = 0;
       }
@@ -4447,7 +4448,7 @@ int SetupServiceSockets()
 
     if (useMediaSocket)
     {
-      if ((mediaFD = ListenConnection(mediaPort, "media")) < 0)
+      if ((mediaFD = ListenConnectionTCP("localhost", mediaPort, "media")) < 0)
       {
         useMediaSocket = 0;
       }
@@ -4455,7 +4456,7 @@ int SetupServiceSockets()
 
     if (useHttpSocket)
     {
-      if ((httpFD = ListenConnection(httpPort, "http")) < 0)
+      if ((httpFD = ListenConnectionTCP("localhost", httpPort, "http")) < 0)
       {
         useHttpSocket = 0;
       }
@@ -4477,7 +4478,7 @@ int SetupServiceSockets()
       {
         int port = atoi(fontPort);
 
-        if ((fontFD = ListenConnection(port, "font")) < 0)
+        if ((fontFD = ListenConnectionTCP("localhost", port, "font")) < 0)
         {
           useFontSocket = 0;
         }
@@ -4512,7 +4513,7 @@ int SetupServiceSockets()
   {
     if (control -> isProtoStep7() == 1)
     {
-      if ((slaveFD = ListenConnection(slavePort, "slave")) < 0)
+      if ((slaveFD = ListenConnectionTCP("localhost", slavePort, "slave")) < 0)
       {
         useSlaveSocket = 0;
       }
@@ -4534,54 +4535,40 @@ int SetupServiceSockets()
   return 1;
 }
 
-int ListenConnection(int port, const char *label)
+int ListenConnection(sockaddr *addr, socklen_t addrlen, const char *label)
 {
-  sockaddr_in tcpAddr;
-
-  unsigned int portTCP = port;
-
-  int newFD = socket(AF_INET, SOCK_STREAM, PF_UNSPEC);
-
+  int newFD = socket(addr->sa_family, SOCK_STREAM, PF_UNSPEC);
   if (newFD == -1)
   {
     #ifdef PANIC
     *logofs << "Loop: PANIC! Call to socket failed for " << label
-            << " TCP socket. Error is " << EGET() << " '"
+            << " socket. Error is " << EGET() << " '"
             << ESTR() << "'.\n" << logofs_flush;
     #endif
 
     cerr << "Error" << ": Call to socket failed for " << label
-         << " TCP socket. Error is " << EGET() << " '"
+         << " socket. Error is " << EGET() << " '"
          << ESTR() << "'.\n";
 
     goto SetupSocketError;
   }
-  else if (SetReuseAddress(newFD) < 0)
+
+  if (SetReuseAddress(newFD) == -1)
   {
+    // SetReuseAddress already warns on error
     goto SetupSocketError;
   }
 
-  tcpAddr.sin_family = AF_INET;
-  tcpAddr.sin_port = htons(portTCP);
-  if ( loopbackBind )
-  {
-    tcpAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  }
-  else
-  {
-    tcpAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  }
-
-  if (bind(newFD, (sockaddr *) &tcpAddr, sizeof(tcpAddr)) == -1)
+  if (bind(newFD, addr, addrlen) == -1)
   {
     #ifdef PANIC
     *logofs << "Loop: PANIC! Call to bind failed for " << label
-            << " TCP port " << port << ". Error is " << EGET()
+            << ". Error is " << EGET()
             << " '" << ESTR() << "'.\n" << logofs_flush;
     #endif
 
     cerr << "Error" << ": Call to bind failed for " << label
-         << " TCP port " << port << ". Error is " << EGET()
+         << ". Error is " << EGET()
          << " '" << ESTR() << "'.\n";
 
     goto SetupSocketError;
@@ -4591,14 +4578,13 @@ int ListenConnection(int port, const char *label)
   {
     #ifdef PANIC
     *logofs << "Loop: PANIC! Call to bind failed for " << label
-            << " TCP port " << port << ". Error is " << EGET()
+            << ". Error is " << EGET()
             << " '" << ESTR() << "'.\n" << logofs_flush;
     #endif
 
     cerr << "Error" << ": Call to bind failed for " << label
-         << " TCP port " << port << ". Error is " << EGET()
+         << ". Error is " << EGET()
          << " '" << ESTR() << "'.\n";
-
     goto SetupSocketError;
   }
 
@@ -4620,6 +4606,39 @@ SetupSocketError:
   //
 
   HandleCleanup();
+  return -1;
+}
+
+int ListenConnectionTCP(const char *host, int port, const char *label)
+{
+  sockaddr_in tcpAddr;
+  tcpAddr.sin_family = AF_INET;
+  tcpAddr.sin_port = htons(port);
+  if (!host ||
+      (strcmp(host, "") == 0) ||
+      (strcmp(host, "localhost") == 0)) {
+    tcpAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  }
+  else if(strcmp(host, "*") == 0) {
+    tcpAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  }
+  else {
+    int ip = tcpAddr.sin_addr.s_addr = GetHostAddress(host);
+    if (ip == 0)
+    {
+      #ifdef PANIC
+      *logofs << "Loop: PANIC! Unknown " << label << " host '" << host
+              << "'.\n" << logofs_flush;
+      #endif
+
+      cerr << "Error" << ": Unknown " << label << " host '" << host
+           << "'.\n";
+
+      HandleCleanup();
+      return -1;
+    }
+  }
+  return ListenConnection((sockaddr *)&tcpAddr, sizeof(tcpAddr), label);
 }
 
 static int AcceptConnection(int fd, int domain, const char *label)
