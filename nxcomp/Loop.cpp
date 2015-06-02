@@ -13722,12 +13722,6 @@ ParseFontPathError:
 
 int ParseListenOption(int &address)
 {
-  //
-  // On the X client side listen on any address.
-  // On the X server side listen to the forwarder
-  // on localhost.
-  //
-
   if (loopbackBind || (control->ProxyMode == proxy_server)) {
     address = htonl(INADDR_LOOPBACK);
   }
