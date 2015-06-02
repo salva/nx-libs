@@ -520,14 +520,6 @@ static int ParseHostOption(const char *opt, char *host, int &port);
 static int ParseFontPath(char *path);
 
 //
-// Determine the interface where to listen for
-// the remote proxy connection or the local
-// forwarder.
-//
-
-static int ParseListenOption(int &interface);
-
-//
 // Translate a pack method id in a literal.
 //
 
@@ -13696,18 +13688,6 @@ ParseFontPathError:
   #endif
 
   return -1;
-}
-
-int ParseListenOption(int &address)
-{
-  if (loopbackBind || (control->ProxyMode == proxy_server)) {
-    address = htonl(INADDR_LOOPBACK);
-  }
-  else
-  {
-    address = htonl(INADDR_ANY);
-  }
-  return 1;
 }
 
 int OpenLogFile(char *name, ostream *&stream)
